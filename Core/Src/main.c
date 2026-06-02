@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "motor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -105,12 +106,15 @@ int main(void)
   MX_TIM12_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  Motor_Init();
+
   printf("\r\n====================================\r\n");
   printf("STM32F405 Chassis Control V1.0\r\n");
   printf("SYSCLK: 168 MHz, HSE: 8 MHz\r\n");
   printf("USART1: Debug, USART2: Gyro, USART3: LoRa\r\n");
   printf("4x Motor PWM + 4x Encoder Ready\r\n");
-  printf("====================================\r\n\r\n");
+  printf("====================================\r\n");
+  printf("[阶段1] 电机驱动测试开始\r\n\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -120,11 +124,22 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    static uint32_t tick = 0;
-    if (++tick % 100 == 0) {  /* 1s 心跳 */
-        printf("[%04lu] Chassis Running\r\n", tick / 100);
+    /* 阶段1 测试: 依次测试每个电机 */
+    const char *names[] = {"M1", "M2", "M3", "M4"};
+    for (int m = 0; m < 4; m++) {
+        printf("[测试] %s 正转 50%% ...\r\n", names[m]);
+        Motor_SetSpeed((Motor_ID)m, 50);
+        HAL_Delay(2000);
+        Motor_Stop((Motor_ID)m);
+        HAL_Delay(500);
+        printf("[测试] %s 反转 50%% ...\r\n", names[m]);
+        Motor_SetSpeed((Motor_ID)m, -50);
+        HAL_Delay(2000);
+        Motor_Stop((Motor_ID)m);
+        HAL_Delay(500);
     }
-    HAL_Delay(10);
+    printf("[测试] 全部电机测试完成，5秒后重新开始\r\n\r\n");
+    HAL_Delay(5000);
   }
   /* USER CODE END 3 */
 }
