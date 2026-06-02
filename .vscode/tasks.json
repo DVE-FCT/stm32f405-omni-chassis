@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cmake",
+            "label": "CMake: 构建 Debug",
+            "command": "build",
+            "targets": ["all"],
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "CMake 构建 Debug 版本"
+        },
+        {
+            "label": "🔌 串口烧录 (STM32 Bootloader)",
+            "type": "shell",
+            "command": "echo ========== 烧录步骤 ========== & echo 1. 将 BOOT0 接高电平 (3.3V) & echo 2. 按一下 RESET 按键 & echo 3. 等待烧录完成... & echo. & \"C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe\" -c port=${input:comPort} br=115200 -w \"${workspaceFolder}/build/Debug/stm_code.elf\" -v & echo. & echo ========== 烧录完成 ========== & echo 4. 将 BOOT0 接回低电平 (GND) & echo 5. 按一下 RESET 按键，程序开始运行 & pause",
+            "problemMatcher": [],
+            "dependsOn": ["CMake: 构建 Debug"],
+            "options": {
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": ["/C"]
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "detail": "通过 USB-TTL 串口使用 STM32 内置 Bootloader 烧录"
+        },
+        {
+            "label": "🔌 仅烧录 (不构建)",
+            "type": "shell",
+            "command": "echo ========== 仅烧录 ========== & echo 1. 将 BOOT0 接高电平 (3.3V) & echo 2. 按一下 RESET 按键 & echo 3. 等待烧录完成... & echo. & \"C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe\" -c port=${input:comPort} br=115200 -w \"${workspaceFolder}/build/Debug/stm_code.elf\" -v & echo. & echo ========== 烧录完成 ========== & echo 4. 将 BOOT0 接回低电平 (GND) & echo 5. 按一下 RESET 按键，程序开始运行 & pause",
+            "problemMatcher": [],
+            "options": {
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": ["/C"]
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "detail": "跳过构建，直接通过 USB-TTL 串口烧录已有的固件"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "comPort",
+            "type": "promptString",
+            "description": "输入串口号 (如 COM3)",
+            "default": "COM3"
+        }
+    ]
+}

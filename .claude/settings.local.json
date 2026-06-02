@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Lenovo/OneDrive/Desktop/stm32_code/imu_f405/**)"
+    ]
+  }
+}
