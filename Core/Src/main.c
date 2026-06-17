@@ -192,25 +192,54 @@ int main(void)
         Motor_SetSpeed(MOTOR_4, -cur[3]);
     }
 
-    /* ---- 里程计: 每循环更新一次 (50Hz) ---- */
+    /* ---- 里程计 + IMU 融合 (每 20ms 一次) ---- */
+    Encoder_Update();
+    GYR_Updata();
+
     static uint32_t last_odom_tick = 0;
     uint32_t now_odom = HAL_GetTick();
+    if (last_odom_tick == 0) last_odom_tick = now_odom;
     float odom_dt = (float)(now_odom - last_odom_tick) / 1000.0f;
-    if (odom_dt > 0.5f) odom_dt = 0.02f;  /* 首次/溢出保护 */
-    Odometry_Update(odom_dt);
     last_odom_tick = now_odom;
+    if (odom_dt <= 0.0f || odom_dt > 0.5f) odom_dt = 0.02f;
 
-    /* ---- 遥测 (5Hz) ---- */
+    /* 陀螺仪角速度 + 零偏校准 (上电 3 秒静置采集) */
+    static float gyro_bias = 0;
+    static uint32_t bias_start = 0;
+    static int bias_cnt = 0;
+    static float bias_sum = 0;
+    float gyro_raw = fGyro[2] * 0.0174533f;  /* dps → rad/s */
+
+    #define GYRO_BIAS_MS  3000
+    if (bias_start == 0) bias_start = HAL_GetTick();
+    if (HAL_GetTick() - bias_start < GYRO_BIAS_MS) {
+        bias_sum += gyro_raw;
+        bias_cnt++;
+    } else if (bias_cnt > 0) {
+        gyro_bias = bias_sum / (float)bias_cnt;
+        bias_cnt = 0;
+    }
+    Odometry_SetGyroZ(gyro_raw - gyro_bias);
+    Odometry_SetImuYaw(fAngle[2] * 0.0174533f);
+    Odometry_SetAccel(fAcc[0], fAcc[1]);  /* 注入加速度, 打滑检测 */
+
+    Odometry_Update(odom_dt);
+
+    /* ---- 遥测 (5Hz, 只读不更新) ---- */
     static uint32_t last_print = 0;
     if (HAL_GetTick() - last_print >= 200) {
-        Encoder_Update(); GYR_Updata();
         int vb = (int)(ADC_ReadBatteryVoltage() * 10);
-        int ox = (int)(Odometry_GetX() * 100);   /* cm */
+        int ox = (int)(Odometry_GetX() * 100);
         int oy = (int)(Odometry_GetY() * 100);
-        int ot = (int)(Odometry_GetTheta() * 57.3f); /* rad→deg */
-        printf(" Vbat:%d.%dV | Odo:(%d,%d) %ddeg | Yaw:%d | F:%d R:%d S:%d\r\n",
-               vb/10, vb%10, ox, oy, ot, (int)fAngle[2],
-               forward, rotate, strafe);
+        int ot = (int)(Odometry_GetTheta() * 57.3f);
+        int we = (int)(Odometry_GetWenc() * 100);
+        int gz = (int)(Odometry_GetGyroZ() * 100);
+        int ya = (int)fAngle[2], gz_raw = (int)fGyro[2];
+        printf(" Vbat:%d.%dV | Odo:(%d,%d) %ddeg | Slip:%d | IMU:%d Gz:%d | we:%d.%02d gy:%d.%02d r/s\r\n",
+               vb/10, vb%10, ox, oy, ot,
+               Odometry_IsSlipping(),
+               ya, gz_raw,
+               we/100, abs(we)%100, gz/100, abs(gz)%100);
         last_print = HAL_GetTick();
     }
     HAL_Delay(20);
