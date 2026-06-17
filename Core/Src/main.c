@@ -29,6 +29,7 @@
 #include "motor.h"
 #include "encoder.h"
 #include "wit_gyro/wit_gyro.h"
+#include "ps2.h"
 #include <stdlib.h>
 /* USER CODE END Includes */
 
@@ -114,17 +115,17 @@ int main(void)
   Motor_Init();
   Encoder_Init();
   GYR_Init();
-  HAL_Delay(500); /* 等待陀螺仪启动, 数据开始到达 */
+  PS2_Init();
+  HAL_Delay(500); /* 等待陀螺仪启动 */
 
   printf("\r\n====================================\r\n");
   printf("STM32F405 Chassis Control V1.0\r\n");
   printf("SYSCLK: 168 MHz, HSE: 8 MHz\r\n");
-  printf("USART1: Debug, USART2: Gyro, USART3: LoRa\r\n");
-  printf("4x Motor PWM + 4x Encoder + ADC + Gyro\r\n");
+  printf("PS2 Ready | 4x Motor + Encoder + Gyro\r\n");
   int startup_vbat = (int)(ADC_ReadBatteryVoltage() * 10);
   printf("Battery: %d.%dV\r\n", startup_vbat / 10, startup_vbat % 10);
   printf("====================================\r\n");
-  printf("[阶段3] 陀螺仪 + 电机 + 编码器测试\r\n\r\n");
+  printf("[PS2遥控] 左杆↑↓=前进后退 | 左杆←→=旋转 | 右杆←→=平移\r\n\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -134,48 +135,73 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* ---- 陀螺仪独立输出 ---- */
-    GYR_Updata();
-    int r = (int)(fAngle[0] * 10); int p = (int)(fAngle[1] * 10); int y = (int)(fAngle[2] * 10);
-    printf("[IMU] Roll:%d.%d Pitch:%d.%d Yaw:%d.%d\r\n",
-           r/10, abs(r)%10, p/10, abs(p)%10, y/10, abs(y)%10);
+    /* ---- PS2 手柄读取 ---- */
+    PS2_ReadData();
+    uint8_t lx_raw = PS2_AnalogData(PSS_LX);
+    uint8_t ly_raw = PS2_AnalogData(PSS_LY);
+    uint8_t rx_raw = PS2_AnalogData(PSS_RX);
+    int forward = 0, rotate = 0, strafe = 0;
 
-    /* ---- 电机测试 ---- */
-    printf("[电机] M1 正转 30%%, 3秒采样...\r\n");
-    Motor_SetSpeed(MOTOR_1, 30);
+    if (!PS2_IsConnected()) {
+        Motor_StopAll();
+        static uint32_t dbg_tick = 0;
+        if (HAL_GetTick() - dbg_tick > 2000) {
+            printf("[PS2] NO_SIG ID=%02X\r\n", PS2_GetRawByte(1));
+            dbg_tick = HAL_GetTick();
+        }
+    } else {
+        /* 左杆↑↓=前进 左杆←→=旋转 右杆←→=平移 */
+        forward = 128 - (int)ly_raw;
+        rotate  = (int)lx_raw - 128;
+        strafe  = 128 - (int)rx_raw;
+        if (abs(forward) < 15) forward = 0;
+        if (abs(rotate)  < 15) rotate  = 0;
+        if (abs(strafe)  < 15) strafe  = 0;
 
-    for (int i = 0; i < 30; i++) {
-        HAL_Delay(100);
-        Encoder_Update();
-        int vbat_int = (int)(ADC_ReadBatteryVoltage() * 10);
-        int rpm1 = (int)Encoder_GetRPM(ENC_1);
-        int rpm2 = (int)Encoder_GetRPM(ENC_2);
-        int rpm3 = (int)Encoder_GetRPM(ENC_3);
-        int rpm4 = (int)Encoder_GetRPM(ENC_4);
-        GYR_Updata();
-        int roll_i = (int)fAngle[0], pitch_i = (int)fAngle[1], yaw_i = (int)fAngle[2];
-        printf(" Vbat:%d.%dV | R:%d P:%d Y:%d deg | E1:%d rpm(%d cm/s) | E2:%d | E3:%d | E4:%d\r\n",
-               vbat_int / 10, vbat_int % 10,
-               roll_i, pitch_i, yaw_i,
-               rpm1, (int)(Encoder_GetSpeed(ENC_1) * 100),
-               rpm2, rpm3, rpm4);
+        /* 麦轮: M1左前 M2左后 M3右前 M4右后 */
+        int m1 = forward + strafe + rotate;
+        int m2 = forward - strafe + rotate;
+        int m3 = forward - strafe - rotate;
+        int m4 = forward + strafe - rotate;
+
+        int max_abs = abs(m1);
+        if (abs(m2) > max_abs) max_abs = abs(m2);
+        if (abs(m3) > max_abs) max_abs = abs(m3);
+        if (abs(m4) > max_abs) max_abs = abs(m4);
+        if (max_abs < 128) max_abs = 128;
+        int t[4];
+        t[0] = m1 * 100 / max_abs;
+        t[1] = m2 * 100 / max_abs;
+        t[2] = m3 * 100 / max_abs;
+        t[3] = m4 * 100 / max_abs;
+
+        static int cur[4] = {0};
+        int ramp = 10;
+        for (int i = 0; i < 4; i++) {
+            if (cur[i] < t[i]) cur[i] = (cur[i]+ramp < t[i]) ? cur[i]+ramp : t[i];
+            else               cur[i] = (cur[i]-ramp > t[i]) ? cur[i]-ramp : t[i];
+        }
+
+        /* 方向系数: M1=-1 M2=+1 M3=+1 M4=-1 (实测) */
+        Motor_SetSpeed(MOTOR_1, -cur[0]);
+        Motor_SetSpeed(MOTOR_2,  cur[1]);
+        Motor_SetSpeed(MOTOR_3,  cur[2]);
+        Motor_SetSpeed(MOTOR_4, -cur[3]);
     }
 
-    printf("[电机] M1 停止, 确认归零...\r\n");
-    Motor_Stop(MOTOR_1);
-    HAL_Delay(2000);
-
-    for (int i = 0; i < 5; i++) {
-        HAL_Delay(100);
-        Encoder_Update();
-        int v_stop = (int)(ADC_ReadBatteryVoltage() * 10);
-        printf(" Vbat:%d.%dV | E1:%d | E2:%d | E3:%d | E4:%d rpm\r\n",
-               v_stop / 10, v_stop % 10,
+    /* ---- 遥测 (5Hz) ---- */
+    static uint32_t last_print = 0;
+    if (HAL_GetTick() - last_print >= 200) {
+        Encoder_Update(); GYR_Updata();
+        int vb = (int)(ADC_ReadBatteryVoltage() * 10);
+        printf(" Vbat:%d.%dV | Yaw:%d | JS:%d %d %d | F:%d R:%d S:%d | E:%d %d %d %d\r\n",
+               vb/10, vb%10, (int)fAngle[2],
+               lx_raw, ly_raw, rx_raw, forward, rotate, strafe,
                (int)Encoder_GetRPM(ENC_1), (int)Encoder_GetRPM(ENC_2),
                (int)Encoder_GetRPM(ENC_3), (int)Encoder_GetRPM(ENC_4));
+        last_print = HAL_GetTick();
     }
-    printf("----------------------------------------\r\n\r\n");
-    HAL_Delay(3000);
+    HAL_Delay(20);
   }
   /* USER CODE END 3 */
 }

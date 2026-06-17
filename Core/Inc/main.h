@@ -73,6 +73,14 @@ void Error_Handler(void);
 #define M4_DIR1_GPIO_Port GPIOB
 #define M4_DIR2_Pin GPIO_PIN_1
 #define M4_DIR2_GPIO_Port GPIOB
+#define PS2_DI_Pin GPIO_PIN_12
+#define PS2_DI_GPIO_Port GPIOB
+#define PS2_DO_Pin GPIO_PIN_13
+#define PS2_DO_GPIO_Port GPIOB
+#define PS2_CS_Pin GPIO_PIN_8
+#define PS2_CS_GPIO_Port GPIOB
+#define PS2_CLK_Pin GPIO_PIN_9
+#define PS2_CLK_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

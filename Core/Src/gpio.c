@@ -55,7 +55,8 @@ void MX_GPIO_Init(void)
                           |M3_DIR1_Pin|M3_DIR2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, M4_DIR1_Pin|M4_DIR2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, M4_DIR1_Pin|M4_DIR2_Pin|PS2_DO_Pin|PS2_CS_Pin
+                          |PS2_CLK_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : M1_DIR1_Pin M1_DIR2_Pin M2_DIR1_Pin M2_DIR2_Pin
                            M3_DIR1_Pin M3_DIR2_Pin */
@@ -66,12 +67,20 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : M4_DIR1_Pin M4_DIR2_Pin */
-  GPIO_InitStruct.Pin = M4_DIR1_Pin|M4_DIR2_Pin;
+  /*Configure GPIO pins : M4_DIR1_Pin M4_DIR2_Pin PS2_DO_Pin PS2_CS_Pin
+                           PS2_CLK_Pin */
+  GPIO_InitStruct.Pin = M4_DIR1_Pin|M4_DIR2_Pin|PS2_DO_Pin|PS2_CS_Pin
+                          |PS2_CLK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PS2_DI_Pin */
+  GPIO_InitStruct.Pin = PS2_DI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(PS2_DI_GPIO_Port, &GPIO_InitStruct);
 
 }
 
