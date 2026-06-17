@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include "motor.h"
 #include "encoder.h"
+#include "wit_gyro/wit_gyro.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -111,16 +113,18 @@ int main(void)
   /* USER CODE BEGIN 2 */
   Motor_Init();
   Encoder_Init();
+  GYR_Init();
+  HAL_Delay(500); /* 等待陀螺仪启动, 数据开始到达 */
 
   printf("\r\n====================================\r\n");
   printf("STM32F405 Chassis Control V1.0\r\n");
   printf("SYSCLK: 168 MHz, HSE: 8 MHz\r\n");
   printf("USART1: Debug, USART2: Gyro, USART3: LoRa\r\n");
-  printf("4x Motor PWM + 4x Encoder + ADC(BAT)\r\n");
+  printf("4x Motor PWM + 4x Encoder + ADC + Gyro\r\n");
   int startup_vbat = (int)(ADC_ReadBatteryVoltage() * 10);
   printf("Battery: %d.%dV\r\n", startup_vbat / 10, startup_vbat % 10);
   printf("====================================\r\n");
-  printf("[阶段2] 电机 + 编码器测试开始\r\n\r\n");
+  printf("[阶段3] 陀螺仪 + 电机 + 编码器测试\r\n\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -130,31 +134,36 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* ---- 阶段2: 编码器 + ADC 测试 ---- */
-    /* 先打印原始值诊断 */
-    printf("[诊断] 编码器原始计数: E1=%ld E2=%ld E3=%ld E4=%ld\r\n",
-           TIM3->CNT, TIM4->CNT, TIM5->CNT, TIM8->CNT);
-    printf("[诊断] ADC1->DR=%lu (接PA5?)\r\n", ADC1->DR);
-    printf("[阶段2] M1 正转 30%%, 3秒采样...\r\n");
+    /* ---- 陀螺仪独立输出 ---- */
+    GYR_Updata();
+    int r = (int)(fAngle[0] * 10); int p = (int)(fAngle[1] * 10); int y = (int)(fAngle[2] * 10);
+    printf("[IMU] Roll:%d.%d Pitch:%d.%d Yaw:%d.%d\r\n",
+           r/10, abs(r)%10, p/10, abs(p)%10, y/10, abs(y)%10);
+
+    /* ---- 电机测试 ---- */
+    printf("[电机] M1 正转 30%%, 3秒采样...\r\n");
     Motor_SetSpeed(MOTOR_1, 30);
 
     for (int i = 0; i < 30; i++) {
         HAL_Delay(100);
         Encoder_Update();
-        int vbat_int = (int)(ADC_ReadBatteryVoltage() * 10); /* 12.3V → 123 */
+        int vbat_int = (int)(ADC_ReadBatteryVoltage() * 10);
         int rpm1 = (int)Encoder_GetRPM(ENC_1);
         int rpm2 = (int)Encoder_GetRPM(ENC_2);
         int rpm3 = (int)Encoder_GetRPM(ENC_3);
         int rpm4 = (int)Encoder_GetRPM(ENC_4);
-        printf(" Vbat:%d.%dV | E1:%d rpm(%d cm/s) | E2:%d | E3:%d | E4:%d\r\n",
+        GYR_Updata();
+        int roll_i = (int)fAngle[0], pitch_i = (int)fAngle[1], yaw_i = (int)fAngle[2];
+        printf(" Vbat:%d.%dV | R:%d P:%d Y:%d deg | E1:%d rpm(%d cm/s) | E2:%d | E3:%d | E4:%d\r\n",
                vbat_int / 10, vbat_int % 10,
+               roll_i, pitch_i, yaw_i,
                rpm1, (int)(Encoder_GetSpeed(ENC_1) * 100),
                rpm2, rpm3, rpm4);
     }
 
-    printf("[阶段2] M1 停止, 确认归零...\r\n");
+    printf("[电机] M1 停止, 确认归零...\r\n");
     Motor_Stop(MOTOR_1);
-    HAL_Delay(2000);  /* 等待电机完全停转 */
+    HAL_Delay(2000);
 
     for (int i = 0; i < 5; i++) {
         HAL_Delay(100);

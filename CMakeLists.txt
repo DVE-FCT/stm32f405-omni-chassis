@@ -48,6 +48,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/motor.c
     Core/Src/encoder.c
     Core/Src/adc.c
+    Core/Src/wit_gyro/wit_c_sdk.c
+    Core/Src/wit_gyro/wit_gyro.c
 )
 
 # Add include paths

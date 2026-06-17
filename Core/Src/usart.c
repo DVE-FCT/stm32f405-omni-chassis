@@ -21,7 +21,8 @@
 #include "usart.h"
 
 /* USER CODE BEGIN 0 */
-
+#include "wit_gyro/wit_gyro.h"
+static uint8_t usart2_rx_byte;
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart1;
@@ -82,7 +83,7 @@ void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
-
+  HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1); /* 启动陀螺仪中断接收 */
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -269,6 +270,12 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART2) {
+        GYR_FeedByte(usart2_rx_byte);               /* 喂给陀螺仪 SDK      */
+        HAL_UART_Receive_IT(&huart2, &usart2_rx_byte, 1); /* 继续接收下一个字节 */
+    }
+}
 /* USER CODE END 1 */
 
