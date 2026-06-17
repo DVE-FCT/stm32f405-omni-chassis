@@ -30,7 +30,9 @@
 #include "encoder.h"
 #include "wit_gyro/wit_gyro.h"
 #include "ps2.h"
+#include "odometry.h"
 #include <stdlib.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -116,6 +118,7 @@ int main(void)
   Encoder_Init();
   GYR_Init();
   PS2_Init();
+  Odometry_Init();
   HAL_Delay(500); /* 等待陀螺仪启动 */
 
   printf("\r\n====================================\r\n");
@@ -189,16 +192,25 @@ int main(void)
         Motor_SetSpeed(MOTOR_4, -cur[3]);
     }
 
+    /* ---- 里程计: 每循环更新一次 (50Hz) ---- */
+    static uint32_t last_odom_tick = 0;
+    uint32_t now_odom = HAL_GetTick();
+    float odom_dt = (float)(now_odom - last_odom_tick) / 1000.0f;
+    if (odom_dt > 0.5f) odom_dt = 0.02f;  /* 首次/溢出保护 */
+    Odometry_Update(odom_dt);
+    last_odom_tick = now_odom;
+
     /* ---- 遥测 (5Hz) ---- */
     static uint32_t last_print = 0;
     if (HAL_GetTick() - last_print >= 200) {
         Encoder_Update(); GYR_Updata();
         int vb = (int)(ADC_ReadBatteryVoltage() * 10);
-        printf(" Vbat:%d.%dV | Yaw:%d | JS:%d %d %d | F:%d R:%d S:%d | E:%d %d %d %d\r\n",
-               vb/10, vb%10, (int)fAngle[2],
-               lx_raw, ly_raw, rx_raw, forward, rotate, strafe,
-               (int)Encoder_GetRPM(ENC_1), (int)Encoder_GetRPM(ENC_2),
-               (int)Encoder_GetRPM(ENC_3), (int)Encoder_GetRPM(ENC_4));
+        int ox = (int)(Odometry_GetX() * 100);   /* cm */
+        int oy = (int)(Odometry_GetY() * 100);
+        int ot = (int)(Odometry_GetTheta() * 57.3f); /* rad→deg */
+        printf(" Vbat:%d.%dV | Odo:(%d,%d) %ddeg | Yaw:%d | F:%d R:%d S:%d\r\n",
+               vb/10, vb%10, ox, oy, ot, (int)fAngle[2],
+               forward, rotate, strafe);
         last_print = HAL_GetTick();
     }
     HAL_Delay(20);

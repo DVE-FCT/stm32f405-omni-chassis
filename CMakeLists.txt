@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/wit_gyro/wit_c_sdk.c
     Core/Src/wit_gyro/wit_gyro.c
     Core/Src/ps2.c
+    Core/Src/odometry.c
 )
 
 # Add include paths
