@@ -58,14 +58,16 @@ void Odometry_Update(float dt)
 {
     if (dt <= 0.0f || dt > 0.1f) dt = 0.02f;
 
-    float v1 = -Encoder_GetSpeed(ENC_1);
-    float v2 =  Encoder_GetSpeed(ENC_2);
-    float v3 =  Encoder_GetSpeed(ENC_3);
-    float v4 = -Encoder_GetSpeed(ENC_4);
+    float v1 = Encoder_GetSpeed(ENC_1);
+    float v2 = Encoder_GetSpeed(ENC_2);
+    float v3 = Encoder_GetSpeed(ENC_3);
+    float v4 = Encoder_GetSpeed(ENC_4);
 
-    float vx = (v1 + v2 + v3 + v4) / 4.0f;
-    float vy = (v1 - v2 - v3 + v4) / 4.0f;
-    float w_enc = (v1 + v2 - v3 - v4) / (4.0f * ODOM_L);
+    /* 正解: v1=-F-S-R v2=+F-S+R v3=+F+S-R v4=-F+S+R */
+    float vx = (v2 + v3) / 2.0f;
+    float vy = (v3 - v2 + v4 - v1) / 4.0f;
+    float R   = (v2 - v1 + v4 - v3) / 4.0f;  /* R = ω×L */
+    float w_enc = R / ODOM_L;
     w_enc_last = w_enc;
 
     /* 编码器航向 (死区) */

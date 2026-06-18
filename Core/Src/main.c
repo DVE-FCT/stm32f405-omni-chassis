@@ -138,34 +138,30 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* ---- PS2 手柄读取 ---- */
     PS2_ReadData();
     uint8_t lx_raw = PS2_AnalogData(PSS_LX);
     uint8_t ly_raw = PS2_AnalogData(PSS_LY);
     uint8_t rx_raw = PS2_AnalogData(PSS_RX);
     int forward = 0, rotate = 0, strafe = 0;
 
+    static int cur[4] = {0};
     if (!PS2_IsConnected()) {
         Motor_StopAll();
-        static uint32_t dbg_tick = 0;
-        if (HAL_GetTick() - dbg_tick > 2000) {
-            printf("[PS2] NO_SIG ID=%02X\r\n", PS2_GetRawByte(1));
-            dbg_tick = HAL_GetTick();
-        }
+        cur[0]=cur[1]=cur[2]=cur[3]=0;
     } else {
-        /* 左杆↑↓=前进 左杆←→=旋转 右杆←→=平移 */
         forward = 128 - (int)ly_raw;
         rotate  = (int)lx_raw - 128;
-        strafe  = 128 - (int)rx_raw;
+        strafe  = (int)rx_raw - 128;  /* 右杆→推 = +strafe */
         if (abs(forward) < 15) forward = 0;
         if (abs(rotate)  < 15) rotate  = 0;
         if (abs(strafe)  < 15) strafe  = 0;
 
-        /* 麦轮: M1左前 M2左后 M3右前 M4右后 */
-        int m1 = forward + strafe + rotate;
-        int m2 = forward - strafe + rotate;
-        int m3 = forward - strafe - rotate;
-        int m4 = forward + strafe - rotate;
+        /* M1↘ M4↙ 
+           M2↙ M3↘: [-F-S-R, +F-S+R, +F+S-R, -F+S+R] */
+        int m1 = -forward - strafe - rotate;
+        int m2 =  forward - strafe + rotate;
+        int m3 =  forward + strafe - rotate;
+        int m4 = -forward + strafe + rotate;
 
         int max_abs = abs(m1);
         if (abs(m2) > max_abs) max_abs = abs(m2);
@@ -178,68 +174,55 @@ int main(void)
         t[2] = m3 * 100 / max_abs;
         t[3] = m4 * 100 / max_abs;
 
-        static int cur[4] = {0};
         int ramp = 10;
         for (int i = 0; i < 4; i++) {
             if (cur[i] < t[i]) cur[i] = (cur[i]+ramp < t[i]) ? cur[i]+ramp : t[i];
             else               cur[i] = (cur[i]-ramp > t[i]) ? cur[i]-ramp : t[i];
         }
 
-        /* 方向系数: M1=-1 M2=+1 M3=+1 M4=-1 (实测) */
-        Motor_SetSpeed(MOTOR_1, -cur[0]);
-        Motor_SetSpeed(MOTOR_2,  cur[1]);
-        Motor_SetSpeed(MOTOR_3,  cur[2]);
-        Motor_SetSpeed(MOTOR_4, -cur[3]);
+        Motor_SetSpeed(MOTOR_1, cur[0]);
+        Motor_SetSpeed(MOTOR_2, cur[1]);
+        Motor_SetSpeed(MOTOR_3, cur[2]);
+        Motor_SetSpeed(MOTOR_4, cur[3]);
     }
 
-    /* ---- 里程计 + IMU 融合 (每 20ms 一次) ---- */
-    Encoder_Update();
-    GYR_Updata();
-
+    /* ---- 里程计+IMU (每20ms) ---- */
+    Encoder_Update(); GYR_Updata();
     static uint32_t last_odom_tick = 0;
     uint32_t now_odom = HAL_GetTick();
     if (last_odom_tick == 0) last_odom_tick = now_odom;
     float odom_dt = (float)(now_odom - last_odom_tick) / 1000.0f;
     last_odom_tick = now_odom;
     if (odom_dt <= 0.0f || odom_dt > 0.5f) odom_dt = 0.02f;
-
-    /* 陀螺仪角速度 + 零偏校准 (上电 3 秒静置采集) */
-    static float gyro_bias = 0;
-    static uint32_t bias_start = 0;
-    static int bias_cnt = 0;
-    static float bias_sum = 0;
-    float gyro_raw = fGyro[2] * 0.0174533f;  /* dps → rad/s */
-
-    #define GYRO_BIAS_MS  3000
+    static float gyro_bias = 0; static uint32_t bias_start = 0;
+    static int bias_cnt = 0; static float bias_sum = 0;
+    float gyro_raw = fGyro[2] * 0.0174533f;
     if (bias_start == 0) bias_start = HAL_GetTick();
-    if (HAL_GetTick() - bias_start < GYRO_BIAS_MS) {
-        bias_sum += gyro_raw;
-        bias_cnt++;
-    } else if (bias_cnt > 0) {
-        gyro_bias = bias_sum / (float)bias_cnt;
-        bias_cnt = 0;
-    }
+    if (HAL_GetTick() - bias_start < 3000) { bias_sum += gyro_raw; bias_cnt++; }
+    else if (bias_cnt > 0) { gyro_bias = bias_sum / bias_cnt; bias_cnt = 0; }
     Odometry_SetGyroZ(gyro_raw - gyro_bias);
     Odometry_SetImuYaw(fAngle[2] * 0.0174533f);
-    Odometry_SetAccel(fAcc[0], fAcc[1]);  /* 注入加速度, 打滑检测 */
-
+    Odometry_SetAccel(fAcc[0], fAcc[1]);
     Odometry_Update(odom_dt);
 
-    /* ---- 遥测 (5Hz, 只读不更新) ---- */
+    /* ---- 遥测 (5Hz) ---- */
     static uint32_t last_print = 0;
     if (HAL_GetTick() - last_print >= 200) {
-        int vb = (int)(ADC_ReadBatteryVoltage() * 10);
+        int vb = (int)(ADC_ReadBatteryVoltage() * 100);
         int ox = (int)(Odometry_GetX() * 100);
         int oy = (int)(Odometry_GetY() * 100);
         int ot = (int)(Odometry_GetTheta() * 57.3f);
-        int we = (int)(Odometry_GetWenc() * 100);
-        int gz = (int)(Odometry_GetGyroZ() * 100);
-        int ya = (int)fAngle[2], gz_raw = (int)fGyro[2];
-        printf(" Vbat:%d.%dV | Odo:(%d,%d) %ddeg | Slip:%d | IMU:%d Gz:%d | we:%d.%02d gy:%d.%02d r/s\r\n",
-               vb/10, vb%10, ox, oy, ot,
-               Odometry_IsSlipping(),
-               ya, gz_raw,
-               we/100, abs(we)%100, gz/100, abs(gz)%100);
+        int slip = Odometry_IsSlipping();
+        int yaw = (int)fAngle[2];
+
+        /* 人类可读 */
+        printf(" Vbat:%d.%02dV | Odo:(%d,%d) %ddeg | Slip:%d | F:%d R:%d S:%d\r\n",
+               vb/100, vb%100, ox, oy, ot, slip, forward, rotate, strafe);
+
+        /* VOFA+ JustFloat (\n 结尾, 逗号分隔) */
+        printf("%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+               vb, ox, oy, ot, slip, yaw, forward, rotate, strafe);
+
         last_print = HAL_GetTick();
     }
     HAL_Delay(20);
